@@ -1,7 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
@@ -29,12 +31,100 @@ namespace PDV
       {
          InitializeComponent();
       }
+      /// <summary>
+      /// Extrai instalador PayGo Windows
+      /// </summary>
+      private static void extraiPGWin()
+      {
+         const string setupPayGoWindows = "SetupPayGo005.001.030.000_Update.exe";
+         string resourceName;
 
+         if (File.Exists(setupPayGoWindows))
+            return;
+
+         string directoryName = System.IO.Path.GetDirectoryName(setupPayGoWindows);
+         if (string.IsNullOrEmpty(directoryName))
+            directoryName = ".";
+         if (!Directory.Exists(directoryName))
+            Directory.CreateDirectory(directoryName);
+
+         Assembly assembly = Assembly.GetExecutingAssembly();
+         resourceName =
+            assembly
+            .GetManifestResourceNames()
+            .FirstOrDefault(str => str.EndsWith(setupPayGoWindows, StringComparison.CurrentCultureIgnoreCase));
+
+         using (Stream stream = assembly.GetManifestResourceStream(resourceName))
+         using (FileStream fileStream = new FileStream(setupPayGoWindows, FileMode.Create))
+            stream.CopyTo(fileStream);
+      }
+      /// <summary>
+      /// Inicia acesso a documentação online
+      /// </summary>
+      /// <param name="sender"></param>
+      /// <param name="e"></param>
+      private async void Documento_Click (object sender, RoutedEventArgs e)
+      {
+         string target = "https://paygodev.readme.io/docs";
+         try
+         {
+            await Task.Run(() => Process.Start(target));
+         }
+         catch (System.ComponentModel.Win32Exception noBrowser)
+         {
+            if (noBrowser.ErrorCode == -2147467259)
+               MessageBox.Show(noBrowser.Message);
+         }
+         catch (System.Exception other)
+         {
+            MessageBox.Show(other.Message);
+         }
+      }
+      /// <summary>
+      /// Ação do botão Update para liberar a aplicação da proteção
+      /// </summary>
+      /// <param name="sender"></param>
+      /// <param name="e"></param>
+      private async void Update_Click (object sender, RoutedEventArgs e)
+      {
+         PGWebLib.PW_End();
+         MessageBox.Show("Após atualizar a versão da automação, por favor reiniciar o PC");
+         await Task.Run(() => Environment.Exit(-1));
+      }
+      /// <summary>
+      /// Botão para instalar o PayGo Windows de forma automática e em segundo plano
+      /// </summary>
+      /// <param name="sender"></param>
+      /// <param name="e"></param>
+      private async void Instal_Click (object sender, RoutedEventArgs e)
+      {
+         string cpfCnpj = "311.980.820-20";// Colocar o CNPJ do seu terminal
+         string pontoDeCaptura = "999999999";   // Colocar o pdc do seu terminal
+         /* Para ambiente de produção essa variável não é necessária. 
+          * Por padrão  já configurado como produção*/
+         string ambiente = "DEMO"; 
+
+         extraiPGWin();
+         // Configura as variáveis de ambiente para a ativação em segundo plano do PayGo Windows
+         Environment.SetEnvironmentVariable("CPFCNPJ", cpfCnpj, EnvironmentVariableTarget.User);
+         Environment.SetEnvironmentVariable("PontoDeCaptura", pontoDeCaptura, EnvironmentVariableTarget.User);
+         Environment.SetEnvironmentVariable("AmbienteCPAY", ambiente, EnvironmentVariableTarget.User);
+         await Task.Run(() => Process.Start("SetupPayGo005.001.030.000_Update.exe"));
+      }
+      /// <summary>
+      /// Chamada de operação administrativa
+      /// </summary>
+      /// <param name="sender"></param>
+      /// <param name="e"></param>
       private async void Admin_Click(object sender, RoutedEventArgs e)
       {
          await NewTransacExecute(PWOPER.PWOPER_ADMIN);
       }
-
+      /// <summary>
+      /// Chamada de operação de venda
+      /// </summary>
+      /// <param name="sender"></param>
+      /// <param name="e"></param>
       private async void Sale_Click(object sender, RoutedEventArgs e)
       {
          await NewTransacExecute(PWOPER.PWOPER_SALE);
@@ -44,11 +134,16 @@ namespace PDV
       {
          return false;
       }
-
+      /// <summary>
+      /// Executa uma operação
+      /// </summary>
+      /// <param name="pwOper"></param>
+      /// <returns></returns>
       private async Task NewTransacExecute(PWOPER pwOper)
       {
          Admin.IsEnabled = false;
          Sale.IsEnabled = false;
+         Update.IsEnabled = false;
 
          Log.PrintThread("Iniciando...");
 
@@ -56,7 +151,7 @@ namespace PDV
          TefWindow.Instance.BindMuxxLib();
 
          PGWebLib.DebugType = DebugType.Json;
-         //PGWebLib.DebugCallback = Log.PrintThread;
+         PGWebLib.DebugCallback = Log.PrintThread;
 
          Fluxos.CancelarOperacaoFunc = Cancelar;
          Fluxos.Clear();
@@ -141,6 +236,20 @@ namespace PDV
 
          Admin.IsEnabled = true;
          Sale.IsEnabled = true;
+         Update.IsEnabled = true;
+      }
+      /// <summary>
+      /// Faz verificações de atualização ao encerar a aplicação
+      /// </summary>
+      /// <param name="e"></param>
+      protected override void OnClosed(EventArgs e)
+      {
+         string existeAtualizacao = Environment.GetEnvironmentVariable("PGWebLibAtualiza");
+         if (Convert.ToBoolean(existeAtualizacao))
+            Environment.SetEnvironmentVariable("PGWebLibPermiteAtualiza", "TRUE", EnvironmentVariableTarget.User);
+         else
+            Environment.SetEnvironmentVariable("PGWebLibPermiteAtualiza", "FALSE", EnvironmentVariableTarget.User);
+         Environment.Exit(-1);
       }
 
    }

@@ -6,12 +6,17 @@
         xmlns:local="clr-namespace:PDV"
         mc:Ignorable="d"
         Title="PDV" 
-        Height="120" 
-        Width="200">
-   <StackPanel Orientation="Vertical" Margin="10">
-
+        Height="270" 
+        Width="250">
+   <StackPanel Orientation="Vertical" Margin="15">
+      <TextBox Text="Para Debugar, use a lib DEBUG. 
+               &#x0a;Em caso de dúvida, consulte  
+               &#x0a;a nossa documentação:" Foreground="Red"></TextBox>
+      <Button x:Name="Doc" Margin="5" Click="Documento_Click">Documentação</Button>
+      <Button x:Name="Instal_PGWin" Margin="5" Click="Instal_Click">Instal PGWin</Button>
       <Button x:Name="Admin" Margin="5" Click="Admin_Click">Admin</Button>
       <Button x:Name="Sale" Margin="5" Click="Sale_Click">Sale</Button>
+      <Button x:Name="Update" Margin="5" Click="Update_Click">Update</Button>
 
    </StackPanel>
 </Window>

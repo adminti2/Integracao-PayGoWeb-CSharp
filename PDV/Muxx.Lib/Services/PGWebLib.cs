@@ -23,6 +23,520 @@ namespace Muxx.Lib.Services
       private static Action<string, long> _endCallPGWebLibCallback;
       private static Action<string> _debugCallback;
 
+      // Delegates das funções da PGWebLib
+      /*=========================================================================================================*\
+       Funcao     :  PW_iInit
+
+       Descricao  :  Esta função é utilizada para inicializar a biblioteca, e retorna imediatamente. Deve ser 
+                     garantido que uma chamada dela retorne PWRET_OK antes de chamar qualquer outra função.
+ 
+       Entradas   :  pszWorkingDir:    Diretório de trabalho (caminho completo, com final nulo) para uso exclusivo 
+                                       do Pay&Go Web.
+
+       Saidas     :  não há.
+ 
+       Retorno    :  PWRET_OK	         Operação bem sucedida.
+                     PWRET_WRITERR	   Falha de gravação no diretório informado.
+                     Outro	            Outro erro de execução (ver “10. Códigos de retorno”, página 40). Uma mensagem 
+                                       de erro pode ser obtida através da função PW_iGetResult (PWINFO_RESULTMSG).
+      \*=========================================================================================================*/
+      private delegate short PW_iInit_(string pszWorkingDir);
+      /*=========================================================================================================*\
+       Funcao     :  PW_iNewTransac
+
+       Descricao  :  Esta função deve ser chamada para iniciar uma nova transação através do Pay&Go Web, 
+                     e retorna imediatamente.
+
+                     Importante: independentemente das funcionalidades suportadas pela Automação e pelo Ponto de 
+                     Captura, é requerido que a Automação disponibilize ao operador uma função para realizar uma 
+                     transação administrativa (PWOPER_ADMIN), para permitir o acesso às funções de manutenção do 
+                     Pay&Go Web. Caso desejado, o acesso a este recurso pode ser restrito a operadores específicos.
+ 
+       Entradas   :  bOper:	Tipo de operação sendo efetuada (constantes PWOPER_xxx):
+                              1:  Pagamento 
+                              2:  Administrativa 
+
+       Saidas     :  não há.
+ 
+       Retorno    :  PWRET_OK	         Transação inicializada.
+                     PWRET_DLLNOTINIT	Não foi executado PW_iInit.
+                     PWRET_NOTINST	   É necessário efetuar uma transação de Instalação.
+                     Outro	            Outro erro de execução (ver “10. Códigos de retorno”, página 40). Uma mensagem 
+                                       de erro pode ser obtida através da função PW_iGetResult (PWINFO_RESULTMSG).
+      \*=========================================================================================================*/
+      private delegate short PW_iNewTransac_(byte bOper);
+      /*=========================================================================================================*\
+       Funcao     :  PW_iAddParam
+
+       Descricao  :  Esta função é utilizada para alimentar a biblioteca com as informações da transação a ser 
+                     realizada, e retorna imediatamente. Estas informações podem ser:
+                        •	Pré-fixadas na Automação;
+                        •	Capturadas do operador pela Automação antes do acionamento do Pay&Go Web;
+                        •	Capturadas do operador após solicitação pelo Pay&Go Web (retorno PW_MOREDATA por PW_iExecTransac).
+
+       Entradas   :  wParam:	      Identificador do parâmetro.
+                     pszValue:	   Valor do parâmetro informado.
+
+       Saidas     :  não há.
+ 
+       Retorno    :  PWRET_OK	         Parâmetro acrescentado com sucesso.
+                     PWRET_INVPARAM	   O valor do parâmetro é inválido.
+                     PWRET_DLLNOTINIT	Não foi executado PW_iInit.
+                     PWRET_TRNNOTINIT	Não foi executado PW_iNewTransac (ver página 10).
+                     PWRET_NOTINST	   É necessário efetuar uma transação de Instalação.
+                     Outro	            Outro erro de execução (ver “10. Códigos de retorno”, página 40). Uma mensagem 
+                                       de erro pode ser obtida através da função PW_iGetResult (PWINFO_RESULTMSG).
+      \*=========================================================================================================*/
+      private delegate short PW_iAddParam_(ushort wParam, string pszValue);
+      /*=========================================================================================================*\
+       Funcao     :  PW_iExecTransac
+
+       Descricao  :  Esta função tenta realizar uma transação através do Pay&Go Web, utilizando os parâmetros 
+                     previamente definidos através de PW_iAddParam. Caso algum dado adicional precise ser informado, 
+                     o retorno será PWRET_MOREDATA e o parâmetro pvstParam retornará informações dos dados que ainda 
+                     devem ser capturados.
+                     Esta função, por se comunicar com a infraestrutura Pay&Go Web, pode demorar alguns segundos 
+                     para retornar.
+ 
+       Entradas   :  piNumParam: 	Quantidade máxima de dados que podem ser capturados de uma vez, caso o retorno 
+                                    seja PW_MOREDATA. (Deve refletir o tamanho da área de memória apontada por 
+                                    pvstParam.) Valor sugerido: 9.
+ 
+       Saidas     :  pvstParam: 	   Lista e características dos dados que precisam ser informados para executar a 
+                                    transação. Consultar “8.Captura de dados” (página 29) para a descrição da estrutura 
+                                    e instruções para a captura de dados adicionais.
+                     piNumParam:	   Quantidade de dados adicionais que precisam ser capturados (quantidade de ocorrências 
+                                    preenchidas em pvstParam).
+
+       Retorno    :  PWRET_OK	         Transação realizada com sucesso. Os resultados da transação devem ser obtidos através da função PW_iGetResult.
+                     PWRET_MOREDATA	   Mais dados são requeridos para executar a transação.
+                     PWRET_DLLNOTINIT	Não foi executado PW_iInit.
+                     PWRET_TRNNOTINIT	Não foi executado PW_iNewTransac (ver página 10).
+                     PWRET_NOTINST	   É necessário efetuar uma transação de Instalação.
+                     Outro	            Outro erro de execução (ver “10. Códigos de retorno”, página 40). Uma mensagem 
+                                       de erro pode ser obtida através da função PW_iGetResult (PWINFO_RESULTMSG).
+      \*=========================================================================================================*/
+      private delegate short PW_iExecTransac_([Out] PW_GetData[] vstParam, ref short piNumParam);
+      /*=========================================================================================================*\
+       Funcao     :  PW_iGetResult
+
+       Descricao  :  Esta função pode ser chamada para obter informações que resultaram da transação efetuada, 
+                     independentemente de ter sido bem ou mal sucedida, e retorna imediatamente.
+ 
+       Entradas   :  iInfo:	   Código da informação solicitada sendo requisitada (PWINFO_xxx, ver lista completa 
+                                 em “9. Dicionário de dados”, página 36).
+                     ulDataSize:	Tamanho (em bytes) da área de memória apontada por pszData. Prever um tamanho maior 
+                                 que o máximo previsto para o dado solicitado.
+
+ 
+       Saidas     :  pszData:	   Valor da informação solicitada (string ASCII com terminador nulo).
+ 
+       Retorno    :  PWRET_OK	         Sucesso. pszData contém o valor solicitado.
+                     PWRET_NODATA	   A informação solicitada não está disponível.
+                     PWRET_BUFOVFLW 	O valor da informação solicitada não cabe em pszData.
+                     PWRET_DLLNOTINIT	Não foi executado PW_iInit.
+                     PWRET_TRNNOTINIT	Não foi executado PW_iNewTransac (ver página 10).
+                     PWRET_NOTINST	   É necessário efetuar uma transação de Instalação.
+                     Outro	            Outro erro de execução (ver “10. Códigos de retorno”, página 40). Uma mensagem 
+                                       de erro pode ser obtida através da função PW_iGetResult (PWINFO_RESULTMSG).
+      \*=========================================================================================================*/
+      private delegate short PW_iGetResult_(short iInfo, [Out] StringBuilder pszData, uint ulDataSize);
+      /*=========================================================================================================*\
+       Funcao     :  PW_iConfirmation
+
+       Descricao  :  Esta função informa ao Pay&Go Web o status final da transação em curso (confirmada ou desfeita). 
+                     Consultar “7. Confirmação de transação” (página 28) para informações adicionais.
+ 
+       Entradas   :  ulStatus:   	Resultado da transação (PWCNF_xxx, ver lista abaixo).
+                     pszReqNum:  	Referência local da transação, obtida através de PW_iGetResult (PWINFO_REQNUM).
+                     pszLocRef:  	Referência da transação para a infraestrutura Pay&Go Web, obtida através de PW_iGetResult (PWINFO_AUTLOCREF). 
+                     pszExtRef:  	Referência da transação para o Provedor, obtida através de PW_iGetResult (PWINFO_AUTEXTREF).
+                     pszVirtMerch:	Identificador do Estabelecimento, obtido através de PW_iGetResult (PWINFO_VIRTMERCH). 
+                     pszAuthSyst:   Nome do Provedor, obtido através de PW_iGetResult (PWINFO_AUTHSYST).
+ 
+       Saidas     :  não há.
+ 
+       Retorno    :  PWRET_OK	         O status da transação foi atualizado com sucesso.
+                     PWRET_DLLNOTINIT	Não foi executado PW_iInit.
+                     PWRET_NOTINST	   É necessário efetuar uma transação de Instalação.
+                     Outro	            Outro erro de execução (ver “10. Códigos de retorno”, página 40). Uma mensagem 
+                                       de erro pode ser obtida através da função PW_iGetResult (PWINFO_RESULTMSG).
+      \*=========================================================================================================*/
+      private delegate short PW_iConfirmation_(uint ulResult, string pszReqNum, string pszLocRef, string pszExtRef, string pszVirtMerch, string pszAuthSyst);
+      /*=========================================================================================================*\
+       Funcao     :  PW_iIdleProc
+
+       Descricao  :  Para o correto funcionamento do sistema, a biblioteca do Pay&Go Web precisa de tempos em tempos 
+                     executar tarefas automáticas enquanto não está realizando nenhuma transação a pedido da Automação. 
+
+       Entradas   :  não há.
+
+       Saidas     :  não há.
+ 
+       Retorno    :  PWRET_OK	         Operação realizada com êxito.
+                     PWRET_DLLNOTINIT	Não foi executado PW_iInit.
+                     PWRET_NOTINST	   É necessário efetuar uma transação de Instalação.
+                     Outro	            Outro erro de execução (ver “10. Códigos de retorno”, página 40). Uma mensagem 
+                                       de erro pode ser obtida através da função PW_iGetResult (PWINFO_RESULTMSG).
+      \*=========================================================================================================*/
+      private delegate short PW_iIdleProc_();
+      /*=========================================================================================================*\
+       Funcao     :  PW_iGetOperations
+
+       Descricao  :  Esta função pode ser chamada para obter quais operações o Pay&Go WEB disponibiliza no momento, 
+                     sejam elas administrativas, de venda ou ambas. 
+
+       Entradas   :              bOperType	      Soma dos tipos de operação a serem incluídos na estrutura de 
+                                                   retorno (PWOPTYPE_xxx).	
+                                 piNumOperations	Número máximo de operações que pode ser retornado. (Deve refletir 
+                                                   o tamanho da área de memória apontada por pvstOperations).
+ 
+       Saídas     :              piNumOperations	Número de operações disponíveis no Pay&Go WEB.
+                                 vstOperations	   Lista das operações disponíveis e suas características.
+
+ 
+       Retorno    :  PWRET_OK	         Operação realizada com êxito.
+                     PWRET_DLLNOTINIT	Não foi executado PW_iInit.
+                     PWRET_NOTINST	   É necessário efetuar uma transação de Instalação.
+                     Outro	            Outro erro de execução (ver “10. Códigos de retorno”, página 40). Uma mensagem 
+                                       de erro pode ser obtida através da função PW_iGetResult (PWINFO_RESULTMSG).
+      \*=========================================================================================================*/
+      private delegate short PW_iGetOperations_(byte bOperType, ref PW_Operations[] vstOperations, ref short piNumOperations);
+      /*=========================================================================================================*\
+       Funcao     :  PW_iPPEventLoop
+
+       Descricao  :  Esta função deverá ser chamada em “loop” até que seja retornado PWRET_OK (ou um erro fatal). Nesse 
+                     “loop”, caso o retorno seja PWRET_DISPLAY o ponto de captura deverá atualizar o “display” com as 
+                     mensagens recebidas da biblioteca.
+ 
+       Entradas   :  ulDisplaySize	Tamanho (em bytes) da área de memória apontada por pszDisplay. 
+                                    Tamanho mínimo recomendado: 100 bytes.
+
+       Saidas     :  pszDisplay	   Caso o retorno da função seja PWRET_DISPLAY, contém uma mensagem de texto 
+                                    (string ASCII com terminal nulo) a ser apresentada pela Automação na interface com 
+                                    o usuário principal. Para o formato desta mensagem, consultar “4.3.Interface com o 
+                                    usuário”, página 8.
+ 
+       Retorno    :  PWRET_NOTHING	   Nada a fazer, continuar aguardando o processamento do PIN-pad.
+                     PWRET_DISPLAY	   Apresentar a mensagem recebida em pszDisplay e continuar aguardando o processamento do PIN-pad.
+                     PWRET_OK	         Captura de dados realizada com êxito, prosseguir com a transação.
+                     PWRET_CANCEL	   A operação foi cancelada pelo Cliente no PIN-pad (tecla [CANCEL]).
+                     PWRET_TIMEOUT	   O Cliente não realizou a captura no tempo limite.
+                     PWRET_FALLBACK	   Ocorreu um erro na leitura do cartão, passar a aceitar a digitação do número do cartão, caso já não esteja aceitando.
+                     PWRET_PPCOMERR	   Falha na comunicação com o PIN-pad.
+                     PWRET_DLLNOTINIT	Não foi executado PW_iInit.
+                     PWRET_INVCALL	   Não há captura de dados no PIN-pad em curso.
+                     Outro	            Outro erro de execução (ver “10. Códigos de retorno”, página 40). Uma mensagem 
+                                       de erro pode ser obtida através da função PW_iGetResult (PWINFO_RESULTMSG).
+      \*=========================================================================================================*/
+      private delegate short PW_iPPEventLoop_([Out] StringBuilder pszDisplay, uint ulDisplaySize);
+      /*=========================================================================================================*\
+       Funcao     :  PW_iPPAbort
+
+       Descricao  :  Esta função pode ser utilizada pela Automação para interromper uma captura de dados no PIN-pad 
+                     em curso, e retorna imediatamente.
+ 
+       Entradas   :  não há.
+
+       Saidas     :  não há. 
+ 
+       Retorno    :  PWRET_OK	         Operação interrompida com sucesso.
+                     PWRET_PPCOMERR	   Falha na comunicação com o PIN-pad.
+                     PWRET_DLLNOTINIT	Não foi executado PW_iInit.
+                     Outro	            Outro erro de execução (ver “10. Códigos de retorno”, página 40). Uma mensagem 
+                                       de erro pode ser obtida através da função PW_iGetResult (PWINFO_RESULTMSG).
+      \*=========================================================================================================*/
+      private delegate short PW_iPPAbort_();
+      /*=========================================================================================================*\
+       Funcao     :  PW_iPPGetCard
+
+       Descricao  :  Esta função é utilizada para realizar a leitura de um cartão (magnético, com chip com contato, 
+                     ou sem contato) no PIN-pad.
+ 
+       Entradas   :  uiIndex	Índice (iniciado em 0) do dado solicitado na última execução de PW_iExecTransac 
+                              (índice do dado no vetor pvstParam).
+
+       Saidas     :  não há.
+ 
+       Retorno    :  PWRET_OK	         Captura iniciada com sucesso, chamar PW_iPPEventLoop para obter o resultado.
+                     PWRET_INVPARAM	   O valor de uiIndex informado não corresponde a uma captura de dados deste tipo.
+                     PWRET_DLLNOTINIT	Não foi executado PW_iInit.
+                     Outro	            Outro erro de execução (ver “10. Códigos de retorno”, página 40). Uma mensagem 
+                                       de erro pode ser obtida através da função PW_iGetResult (PWINFO_RESULTMSG).
+      \*=========================================================================================================*/
+      private delegate short PW_iPPGetCard_(ushort uiIndex);
+      /*=========================================================================================================*\
+       Funcao     :  PW_iPPGetPIN
+
+       Descricao  :  Esta função é utilizada para realizar a captura no PIN-pad da senha (ou outro dado criptografado) 
+                     do Cliente.
+ 
+       Entradas   :  uiIndex	Índice (iniciado em 0) do dado solicitado na última execução de PW_iExecTransac 
+                              (índice do dado no vetor pvstParam).
+   
+       Saidas     :  não há.
+ 
+       Retorno    :  PWRET_OK	         Captura iniciada com sucesso, chamar PW_iPPEventLoop para obter o resultado.
+                     PWRET_INVPARAM	   O valor de uiIndex informado não corresponde a uma captura de dados deste tipo.
+                     PWRET_DLLNOTINIT	Não foi executado PW_iInit.
+                     Outro	            Outro erro de execução (ver “10. Códigos de retorno”, página 40). Uma mensagem 
+                                       de erro pode ser obtida através da função PW_iGetResult (PWINFO_RESULTMSG).
+      \*=========================================================================================================*/
+      private delegate short PW_iPPGetPIN_(ushort uiIndex);
+      /*=========================================================================================================*\
+       Funcao     :  PW_iPPGetData
+
+       Descricao  :  Esta função é utilizada para fazer a captura no PIN-pad de um dado não sensível do Cliente..
+ 
+       Entradas   :  uiIndex	Índice (iniciado em 0) do dado solicitado na última execução de PW_iExecTransac 
+                              (índice do dado no vetor pvstParam).
+
+       Saidas     :  nao ha.
+ 
+       Retorno    :  PWRET_OK	         Captura iniciada com sucesso, chamar PW_iPPEventLoop para obter o resultado.
+                     PWRET_INVPARAM	   O valor de uiIndex informado não corresponde a uma captura de dados deste tipo.
+                     PWRET_DLLNOTINIT	Não foi executado PW_iInit.
+                     Outro	            Outro erro de execução (ver “10. Códigos de retorno”, página 40). Uma mensagem 
+                                       de erro pode ser obtida através da função PW_iGetResult (PWINFO_RESULTMSG).
+      \*=========================================================================================================*/
+      private delegate short PW_iPPGetData_(ushort uiIndex);
+      /*=========================================================================================================*\
+       Funcao     :  PW_iPPGoOnChip
+
+       Descricao  :  Esta função é utilizada para realizar o processamento off-line (antes da comunicação com o Provedor) 
+                     de um cartão com chip no PIN-pad. 
+ 
+       Entradas   :  uiIndex	Índice (iniciado em 0) do dado solicitado na última execução de PW_iExecTransac 
+                              (índice do dado no vetor pvstParam).
+
+       Saidas     :  não há.
+ 
+       Retorno    :  PWRET_OK	         Captura iniciada com sucesso, chamar PW_iPPEventLoop para obter o resultado.
+                     PWRET_INVPARAM	   O valor de uiIndex informado não corresponde a uma captura de dados deste tipo.
+                     PWRET_DLLNOTINIT	Não foi executado PW_iInit.
+                     Outro	            Outro erro de execução (ver “10. Códigos de retorno”, página 40). Uma mensagem 
+                                       de erro pode ser obtida através da função PW_iGetResult (PWINFO_RESULTMSG).
+      \*=========================================================================================================*/
+      private delegate short PW_iPPGoOnChip_(ushort uiIndex);
+      /*=========================================================================================================*\
+       Funcao     :  PW_iPPFinishChip
+
+       Descricao  :  Esta função é utilizada para finalizar o processamento on-line (após comunicação com o Provedor) 
+                     de um cartão com chip no PIN-pad.
+ 
+       Entradas   :  uiIndex	Índice (iniciado em 0) do dado solicitado na última execução de PW_iExecTransac 
+                              (índice do dado no vetor pvstParam).
+
+       Saidas     :  não há.
+ 
+       Retorno    :  PWRET_OK	         Captura iniciada com sucesso, chamar PW_iPPEventLoop para obter o resultado.
+                     PWRET_INVPARAM	   O valor de uiIndex informado não corresponde a uma captura de dados deste tipo.
+                     PWRET_DLLNOTINIT	Não foi executado PW_iInit.
+                     Outro	            Outro erro de execução (ver “10. Códigos de retorno”, página 40). Uma mensagem 
+                                       de erro pode ser obtida através da função PW_iGetResult (PWINFO_RESULTMSG).
+      \*=========================================================================================================*/
+      private delegate short PW_iPPFinishChip_(ushort uiIndex);
+      /*=========================================================================================================*\
+       Funcao     :  PW_iPPConfirmData
+
+       Descricao  :  Esta função é utilizada para obter do Cliente a confirmação de uma informação no PIN-pad.
+ 
+       Entradas   :  uiIndex	Índice (iniciado em 0) do dado solicitado na última execução de PW_iExecTransac 
+                              (índice do dado no vetor pvstParam).
+
+       Saidas     :  não há.
+ 
+       Retorno    :  PWRET_OK	         Captura iniciada com sucesso, chamar PW_iPPEventLoop para obter o resultado.
+                     PWRET_INVPARAM	   O valor de uiIndex informado não corresponde a uma captura de dados deste tipo.
+                     PWRET_DLLNOTINIT	Não foi executado PW_iInit.
+                     Outro	            Outro erro de execução (ver “10. Códigos de retorno”, página 40). Uma mensagem 
+                                       de erro pode ser obtida através da função PW_iGetResult (PWINFO_RESULTMSG).
+      \*=========================================================================================================*/
+      private delegate short PW_iPPConfirmData_(ushort uiIndex);
+      /*=========================================================================================================*\
+       Funcao     :  PW_iPPRemoveCard
+
+       Descricao  :  Esta função é utilizada para fazer uma remoção de cartão do PIN-pad.
+ 
+       Entradas   :  não há.
+
+       Saidas     :  não há.
+ 
+       Retorno    :  PWRET_OK	         Captura iniciada com sucesso, chamar PW_iPPEventLoop para obter o resultado.
+                     PWRET_INVPARAM	   O valor de uiIndex informado não corresponde a uma captura de dados deste tipo.
+                     PWRET_DLLNOTINIT	Não foi executado PW_iInit.
+                     Outro	            Outro erro de execução (ver “10. Códigos de retorno”, página 40). Uma mensagem 
+                                       de erro pode ser obtida através da função PW_iGetResult (PWINFO_RESULTMSG).
+      \*=========================================================================================================*/
+      private delegate short PW_iPPRemoveCard_();
+      /*=========================================================================================================*\
+       Funcao     :  PW_iPPDisplay
+
+       Descricao  :  Esta função é utilizada para apresentar uma mensagem no PIN-pad
+ 
+       Entradas   :  pszMsg   Mensagem a ser apresentada no PIN-pad. O caractere ‘\r’ (0Dh) indica uma quebra de linha.
+
+       Saidas     :  não há.
+ 
+       Retorno    :  PWRET_OK	         Captura iniciada com sucesso, chamar PW_iPPEventLoop para obter o resultado.
+                     PWRET_DLLNOTINIT	Não foi executado PW_iInit.
+                     Outro	            Outro erro de execução (ver “10. Códigos de retorno”, página 40). Uma mensagem 
+                                       de erro pode ser obtida através da função PW_iGetResult (PWINFO_RESULTMSG).
+      \*=========================================================================================================*/
+      private delegate short PW_iPPDisplay_(string pszMsg);
+      /*=========================================================================================================*\
+       Funcao     :  PW_iPPWaitEvent
+
+       Descricao  :  Esta função é utilizada para aguardar a ocorrência de um evento no PIN-pad.
+ 
+       Entradas   :  não há.
+
+       Saidas     :  pulEvent	         Evento ocorrido.
+ 
+       Retorno    :  PWRET_OK	         Captura iniciada com sucesso, chamar PW_iPPEventLoop para obter o resultado.
+                     PWRET_DLLNOTINIT	Não foi executado PW_iInit.
+                     Outro	            Outro erro de execução (ver “10. Códigos de retorno”, página 40). Uma mensagem 
+                                       de erro pode ser obtida através da função PW_iGetResult (PWINFO_RESULTMSG).
+      \*=========================================================================================================*/
+      private delegate short PW_iPPWaitEvent_(ref uint pulEvent);
+      /*===========================================================================*\
+       Funcao   : PW_iPPGenericCMD
+
+       Descricao  :  Realiza comando genérico de PIN-pad.
+ 
+       Entradas   :  uiIndex	Índice (iniciado em 0) do dado solicitado na última execução de PW_iExecTransac 
+                              (índice do dado no vetor pvstParam).
+
+       Saidas     :  Não há.
+ 
+       Retorno    :  PWRET_xxx.
+      \*===========================================================================*/
+      private delegate short PW_iPPGenericCMD_(ushort uiIndex);
+      /*===========================================================================*\
+       Funcao     : PW_iPPPositiveConfirmation
+
+       Descricao  :  Realiza a confirmação positiva de um dado, ou um bloco de dados,
+                      no PIN-pad
+ 
+       Entradas   :  uiIndex	Índice (iniciado em 0) do dado solicitado na última execução de PW_iExecTransac 
+                              (índice do dado no vetor pvstParam).
+
+       Saidas     :  Não há.
+ 
+       Retorno    :  PWRET_xxx.
+      \*===========================================================================*/
+      private delegate short PW_iPPPositiveConfirmation_(ushort uiIndex);
+      /*===========================================================================*\
+       Funcao     : PW_iTransactionInquiry
+
+       Descricao  :  Esta função é utilizada para realizar uma consulta de transações 
+                     efetuadas por um ponto de captura junto ao Pay&Go WEB.
+
+       Entradas   :  pszXmlRequest	Arquivo de entrada no formato XML, contendo as informações 
+                                    necessárias para fazer a consulta pretendida.
+                     ulXmlResponseLen Tamanho da string pszXmlResponse.
+
+       Saidas     :  pszXmlResponse	Arquivo de saída no formato XML, contendo o resultado da consulta 
+                                    efetuada, o arquivo de saída tem todos os elementos do arquivo de entrada.
+
+       Retorno    :  PWRET_xxx.
+      \*===========================================================================*/
+      private delegate short PW_iTransactionInquiry_(byte pszXmlRequest, byte pszXmlResponse, uint ulXmlResponseLen);
+      /*=========================================================================================================*\
+       Funcao     :  PW_iGetUserData
+
+       Descricao  :  Esta função é utilizada para obter um dado digitado pelo portador do cartão no PIN-pad.
+
+       Entradas   :  uiMessageId : Identificador da mensagem a ser exibida como prompt para a captura.
+                     bMinLen     : Tamanho mínimo do dado a ser digitado.
+                     bMaxLen     : Tamanho máximo do dado a ser digitado.
+                     iToutSec    : Tempo limite para a digitação do dado em segundos.
+ 
+       Saídas     :  pszData     : Dado digitado pelo portador do cartão no PIN-pad.
+ 
+       Retorno    :  PWRET_OK	         Operação realizada com êxito.
+                     PWRET_DLLNOTINIT	Não foi executado PW_iInit.
+                     PWRET_NOTINST	   É necessário efetuar uma transação de Instalação.
+                     PWRET_CANCEL	   A operação foi cancelada pelo Cliente no PIN-pad (tecla [CANCEL]).
+                     PWRET_TIMEOUT	   O Cliente não realizou a captura no tempo limite.
+                     PWRET_PPCOMERR	   Falha na comunicação com o PIN-pad.
+                     PWRET_INVCALL	   Não é possível capturar dados em um PIN-pad não ABECS.
+                     Outro	            Outro erro de execução (ver “10. Códigos de retorno”, página 40). Uma mensagem 
+                                       de erro pode ser obtida através da função PW_iGetResult (PWINFO_RESULTMSG).
+      \*=========================================================================================================*/
+      private delegate short PW_iPPGetUserData_(short uiMessageId, short bMinLen, short bMaxLen, short iToutSec, StringBuilder pszData);
+      /*=========================================================================================================*\
+       Funcao     :  PW_iPPGetPINBlock
+
+       Descricao  :  Esta função é utilizada para obter o PIN block gerado a partir de um dado digitado pelo usuário no PIN-pad.
+
+       Entradas   :  bKeyID	      : Índice da Master Key (para chave PayGo, utilizar o índice “12”).
+                     pszWorkingKey	: Sequência 32 caracteres utilizados para a geração do PIN block (dois valores iguais digitados pelo usuário com duas pszWorkingKey diferentes irão gerar dois PIN block diferentes.
+                     bMinLen	      : Tamanho mínimo do dado a ser digitado (a partir de 4).
+                     bMaxLen     	: Tamanho máximo do dado a ser digitado.
+                     iToutSec    	: Tempo limite para a digitação do dado em segundos.
+                     pszPrompt	   : Mensagem de 32 caracteres (2 linhas com 16 colunas) para apresentação no momento do pedido do dado do usuário.
+
+
+       Saídas     :  pszData        : PIN block gerado com base nos dados fornecidos na função combinados com o dado digitado pelo usuário no PIN-pad.
+
+       Retorno    :  PWRET_OK	         Operação realizada com êxito.
+                     PWRET_DLLNOTINIT	Não foi executado PW_iInit.
+                     PWRET_NOTINST	   É necessário efetuar uma transação de Instalação.
+                     PWRET_CANCEL	   A operação foi cancelada pelo Cliente no PIN-pad (tecla [CANCEL]).
+                     PWRET_TIMEOUT	   O Cliente não realizou a captura no tempo limite.
+                     PWRET_PPCOMERR	   Falha na comunicação com o PIN-pad.
+                     Outro	            Outro erro de execução (ver “10. Códigos de retorno”, página 40).
+      \*=========================================================================================================*/
+      private delegate short PW_iPPGetPINBlock_(short bKeyID, string pszWorkingKey, short bMinLen,
+                                                short bMaxLen, short iToutSec, string pszPrompt, 
+                                                StringBuilder pszData);
+      /*=========================================================================================================*\
+       Funcao     :  PW_iWaitConfirmation
+
+       Descricao  :  Esta função é utilizada sincronizar a aplicação com a thread da confirmação.
+                     Esta função apenas retorna quando o processo de confirmação é finalizado.
+
+       Entradas   :  Não há.
+
+       Saídas     :  Não há.
+
+       Retorno    :  PWRET_OK	         Operação realizada com êxito.
+                     PWRET_DLLNOTINIT	Não foi executado PW_iInit.
+                     PWRET_NOTINST	   É necessário efetuar uma transação de Instalação.
+                     Outro	            Outro erro de execução (ver “10. Códigos de retorno”, página 40).
+      \*=========================================================================================================*/
+      private delegate short PW_iWaitConfirmation_();
+      /*=========================================================================================================*\
+       Funcao     :  PW_iPPTestKey
+
+       Descricao  :  Esta função é utilizada para iniciar a captura de uma chave de PIN do teste de chaves.
+                     Deve ser chamada em resposta a uma captura de dados do tipo PWDAT_TSTKEY.
+
+
+       Entradas   :  uiIndex.
+
+       Saídas     :  Não há.
+
+       Retorno    :  PWRET_OK	         Operação realizada com êxito.
+                     PWRET_DLLNOTINIT	Não foi executado PW_iInit.
+                     PWRET_NOTINST	   É necessário efetuar uma transação de Instalação.
+                     Outro	            Outro erro de execução (ver “10. Códigos de retorno”, página 40).
+      \*=========================================================================================================*/
+      private delegate short PW_iPPTestKey_(ushort uiIndex);
+      /*=========================================================================================================*\
+       Funcao     :  PW_End
+
+       Descricao  : Essa função finaliza algumas funções da lib e remove a proteção da automação para que seja feita 
+                    uma atualização
+
+
+       Entradas   :  Não há.
+       Saídas     :  Não há.
+       Retorno    :  Não há
+      \*=========================================================================================================*/
+      private delegate void PW_End_();
+
       /// <summary>
       /// Callback feito antes de chamar PW_ixxx.
       /// </summary>
@@ -104,19 +618,22 @@ namespace Muxx.Lib.Services
       #endregion
 
       #region Private Attributes
-
+      private static IntPtr pgWebLib_Loded;
+      private static string pgwebLibAddress;
       #endregion
 
+      #region Contantes
       //Como caractere separador de diretório (DirectorySeparatorChar), 
       //foi usado o caractere de barra "/". 
       //É o único caractere separador de diretório reconhecido em sistemas UNIX, 
       //e é o caractere alternativo (AltDirectorySeparatorChar) no Windows.
       private const string PGWEBCERTIFICATEADDRESS = @"./Certificado.crt";
-      private const string PGWEBLIBADDRESS = @"./PGWebLib/PGWebLib";
+      //private const string PGWEBLIBADDRESS = @"./PGWebLib/PGWebLib";
       private const short NUMPARAM = 9;
 
       public const string SENHALOGISTA = "1111";
       public const string SENHATECNICA = "314159";
+      #endregion
 
       #region Public Properties
 
@@ -136,562 +653,30 @@ namespace Muxx.Lib.Services
       static PGWebLib()
       {
          DebugType = DebugType.Default;
+
+         if (Environment.Is64BitProcess)
+         {
+            pgwebLibAddress = Environment.GetEnvironmentVariable("PathPGWebLib_x64") ?? "";
+            pgWebLib_Loded = LoadLibrary(pgwebLibAddress);
+         }
+         else
+         {
+            pgwebLibAddress = Environment.GetEnvironmentVariable("PathPGWebLib") ?? "";
+            pgWebLib_Loded = LoadLibrary(pgwebLibAddress);
+         }
       }
 
       #endregion
 
       #region Interop
 
-      /*=========================================================================================================*\
-       Funcao     :  PW_iInit
-
-       Descricao  :  Esta função é utilizada para inicializar a biblioteca, e retorna imediatamente. Deve ser 
-                     garantido que uma chamada dela retorne PWRET_OK antes de chamar qualquer outra função.
- 
-       Entradas   :  pszWorkingDir:    Diretório de trabalho (caminho completo, com final nulo) para uso exclusivo 
-                                       do Pay&Go Web.
-
-       Saidas     :  não há.
- 
-       Retorno    :  PWRET_OK	         Operação bem sucedida.
-                     PWRET_WRITERR	   Falha de gravação no diretório informado.
-                     Outro	            Outro erro de execução (ver “10. Códigos de retorno”, página 40). Uma mensagem 
-                                       de erro pode ser obtida através da função PW_iGetResult (PWINFO_RESULTMSG).
-      \*=========================================================================================================*/
-      [DllImport(PGWEBLIBADDRESS, EntryPoint = "PW_iInit", CallingConvention = CallingConvention.StdCall)]
-      private static extern short PW_iInit_(string pszWorkingDir);
-
-      /*=========================================================================================================*\
-       Funcao     :  PW_iNewTransac
-
-       Descricao  :  Esta função deve ser chamada para iniciar uma nova transação através do Pay&Go Web, 
-                     e retorna imediatamente.
-
-                     Importante: independentemente das funcionalidades suportadas pela Automação e pelo Ponto de 
-                     Captura, é requerido que a Automação disponibilize ao operador uma função para realizar uma 
-                     transação administrativa (PWOPER_ADMIN), para permitir o acesso às funções de manutenção do 
-                     Pay&Go Web. Caso desejado, o acesso a este recurso pode ser restrito a operadores específicos.
- 
-       Entradas   :  bOper:	Tipo de operação sendo efetuada (constantes PWOPER_xxx):
-                              1:  Pagamento 
-                              2:  Administrativa 
-
-       Saidas     :  não há.
- 
-       Retorno    :  PWRET_OK	         Transação inicializada.
-                     PWRET_DLLNOTINIT	Não foi executado PW_iInit.
-                     PWRET_NOTINST	   É necessário efetuar uma transação de Instalação.
-                     Outro	            Outro erro de execução (ver “10. Códigos de retorno”, página 40). Uma mensagem 
-                                       de erro pode ser obtida através da função PW_iGetResult (PWINFO_RESULTMSG).
-      \*=========================================================================================================*/
-      [DllImport(PGWEBLIBADDRESS, EntryPoint = "PW_iNewTransac", CallingConvention = CallingConvention.StdCall)]
-      private static extern short PW_iNewTransac_(byte bOper);
-
-      /*=========================================================================================================*\
-       Funcao     :  PW_iAddParam
-
-       Descricao  :  Esta função é utilizada para alimentar a biblioteca com as informações da transação a ser 
-                     realizada, e retorna imediatamente. Estas informações podem ser:
-                        •	Pré-fixadas na Automação;
-                        •	Capturadas do operador pela Automação antes do acionamento do Pay&Go Web;
-                        •	Capturadas do operador após solicitação pelo Pay&Go Web (retorno PW_MOREDATA por PW_iExecTransac).
-
-       Entradas   :  wParam:	      Identificador do parâmetro.
-                     pszValue:	   Valor do parâmetro informado.
-
-       Saidas     :  não há.
- 
-       Retorno    :  PWRET_OK	         Parâmetro acrescentado com sucesso.
-                     PWRET_INVPARAM	   O valor do parâmetro é inválido.
-                     PWRET_DLLNOTINIT	Não foi executado PW_iInit.
-                     PWRET_TRNNOTINIT	Não foi executado PW_iNewTransac (ver página 10).
-                     PWRET_NOTINST	   É necessário efetuar uma transação de Instalação.
-                     Outro	            Outro erro de execução (ver “10. Códigos de retorno”, página 40). Uma mensagem 
-                                       de erro pode ser obtida através da função PW_iGetResult (PWINFO_RESULTMSG).
-      \*=========================================================================================================*/
-      [DllImport(PGWEBLIBADDRESS, EntryPoint = "PW_iAddParam", CallingConvention = CallingConvention.StdCall)]
-      private static extern short PW_iAddParam_(ushort wParam, string pszValue);
-
-      /*=========================================================================================================*\
-       Funcao     :  PW_iExecTransac
-
-       Descricao  :  Esta função tenta realizar uma transação através do Pay&Go Web, utilizando os parâmetros 
-                     previamente definidos através de PW_iAddParam. Caso algum dado adicional precise ser informado, 
-                     o retorno será PWRET_MOREDATA e o parâmetro pvstParam retornará informações dos dados que ainda 
-                     devem ser capturados.
-                     Esta função, por se comunicar com a infraestrutura Pay&Go Web, pode demorar alguns segundos 
-                     para retornar.
- 
-       Entradas   :  piNumParam: 	Quantidade máxima de dados que podem ser capturados de uma vez, caso o retorno 
-                                    seja PW_MOREDATA. (Deve refletir o tamanho da área de memória apontada por 
-                                    pvstParam.) Valor sugerido: 9.
- 
-       Saidas     :  pvstParam: 	   Lista e características dos dados que precisam ser informados para executar a 
-                                    transação. Consultar “8.Captura de dados” (página 29) para a descrição da estrutura 
-                                    e instruções para a captura de dados adicionais.
-                     piNumParam:	   Quantidade de dados adicionais que precisam ser capturados (quantidade de ocorrências 
-                                    preenchidas em pvstParam).
-
-       Retorno    :  PWRET_OK	         Transação realizada com sucesso. Os resultados da transação devem ser obtidos através da função PW_iGetResult.
-                     PWRET_MOREDATA	   Mais dados são requeridos para executar a transação.
-                     PWRET_DLLNOTINIT	Não foi executado PW_iInit.
-                     PWRET_TRNNOTINIT	Não foi executado PW_iNewTransac (ver página 10).
-                     PWRET_NOTINST	   É necessário efetuar uma transação de Instalação.
-                     Outro	            Outro erro de execução (ver “10. Códigos de retorno”, página 40). Uma mensagem 
-                                       de erro pode ser obtida através da função PW_iGetResult (PWINFO_RESULTMSG).
-      \*=========================================================================================================*/
-      [DllImport(PGWEBLIBADDRESS, EntryPoint = "PW_iExecTransac", CallingConvention = CallingConvention.StdCall)]
-      private static extern short PW_iExecTransac_([Out] PW_GetData[] vstParam, ref short piNumParam);
-
-      /*=========================================================================================================*\
-       Funcao     :  PW_iGetResult
-
-       Descricao  :  Esta função pode ser chamada para obter informações que resultaram da transação efetuada, 
-                     independentemente de ter sido bem ou mal sucedida, e retorna imediatamente.
- 
-       Entradas   :  iInfo:	   Código da informação solicitada sendo requisitada (PWINFO_xxx, ver lista completa 
-                                 em “9. Dicionário de dados”, página 36).
-                     ulDataSize:	Tamanho (em bytes) da área de memória apontada por pszData. Prever um tamanho maior 
-                                 que o máximo previsto para o dado solicitado.
-
- 
-       Saidas     :  pszData:	   Valor da informação solicitada (string ASCII com terminador nulo).
- 
-       Retorno    :  PWRET_OK	         Sucesso. pszData contém o valor solicitado.
-                     PWRET_NODATA	   A informação solicitada não está disponível.
-                     PWRET_BUFOVFLW 	O valor da informação solicitada não cabe em pszData.
-                     PWRET_DLLNOTINIT	Não foi executado PW_iInit.
-                     PWRET_TRNNOTINIT	Não foi executado PW_iNewTransac (ver página 10).
-                     PWRET_NOTINST	   É necessário efetuar uma transação de Instalação.
-                     Outro	            Outro erro de execução (ver “10. Códigos de retorno”, página 40). Uma mensagem 
-                                       de erro pode ser obtida através da função PW_iGetResult (PWINFO_RESULTMSG).
-      \*=========================================================================================================*/
-      [DllImport(PGWEBLIBADDRESS, EntryPoint = "PW_iGetResult", CallingConvention = CallingConvention.StdCall)]
-      private static extern short PW_iGetResult_(short iInfo, [Out] StringBuilder pszData, uint ulDataSize);
-
-      /*=========================================================================================================*\
-       Funcao     :  PW_iConfirmation
-
-       Descricao  :  Esta função informa ao Pay&Go Web o status final da transação em curso (confirmada ou desfeita). 
-                     Consultar “7. Confirmação de transação” (página 28) para informações adicionais.
- 
-       Entradas   :  ulStatus:   	Resultado da transação (PWCNF_xxx, ver lista abaixo).
-                     pszReqNum:  	Referência local da transação, obtida através de PW_iGetResult (PWINFO_REQNUM).
-                     pszLocRef:  	Referência da transação para a infraestrutura Pay&Go Web, obtida através de PW_iGetResult (PWINFO_AUTLOCREF). 
-                     pszExtRef:  	Referência da transação para o Provedor, obtida através de PW_iGetResult (PWINFO_AUTEXTREF).
-                     pszVirtMerch:	Identificador do Estabelecimento, obtido através de PW_iGetResult (PWINFO_VIRTMERCH). 
-                     pszAuthSyst:   Nome do Provedor, obtido através de PW_iGetResult (PWINFO_AUTHSYST).
- 
-       Saidas     :  não há.
- 
-       Retorno    :  PWRET_OK	         O status da transação foi atualizado com sucesso.
-                     PWRET_DLLNOTINIT	Não foi executado PW_iInit.
-                     PWRET_NOTINST	   É necessário efetuar uma transação de Instalação.
-                     Outro	            Outro erro de execução (ver “10. Códigos de retorno”, página 40). Uma mensagem 
-                                       de erro pode ser obtida através da função PW_iGetResult (PWINFO_RESULTMSG).
-      \*=========================================================================================================*/
-      [DllImport(PGWEBLIBADDRESS, EntryPoint = "PW_iConfirmation", CallingConvention = CallingConvention.StdCall)]
-      private static extern short PW_iConfirmation_(uint ulResult, string pszReqNum, string pszLocRef, string pszExtRef, string pszVirtMerch, string pszAuthSyst);
-
-      /*=========================================================================================================*\
-       Funcao     :  PW_iIdleProc
-
-       Descricao  :  Para o correto funcionamento do sistema, a biblioteca do Pay&Go Web precisa de tempos em tempos 
-                     executar tarefas automáticas enquanto não está realizando nenhuma transação a pedido da Automação. 
-
-       Entradas   :  não há.
-
-       Saidas     :  não há.
- 
-       Retorno    :  PWRET_OK	         Operação realizada com êxito.
-                     PWRET_DLLNOTINIT	Não foi executado PW_iInit.
-                     PWRET_NOTINST	   É necessário efetuar uma transação de Instalação.
-                     Outro	            Outro erro de execução (ver “10. Códigos de retorno”, página 40). Uma mensagem 
-                                       de erro pode ser obtida através da função PW_iGetResult (PWINFO_RESULTMSG).
-      \*=========================================================================================================*/
-      [DllImport(PGWEBLIBADDRESS, EntryPoint = "PW_iIdleProc", CallingConvention = CallingConvention.StdCall)]
-      private static extern short PW_iIdleProc_();
-
-      /*=========================================================================================================*\
-       Funcao     :  PW_iGetOperations
-
-       Descricao  :  Esta função pode ser chamada para obter quais operações o Pay&Go WEB disponibiliza no momento, 
-                     sejam elas administrativas, de venda ou ambas. 
-
-       Entradas   :              bOperType	      Soma dos tipos de operação a serem incluídos na estrutura de 
-                                                   retorno (PWOPTYPE_xxx).	
-                                 piNumOperations	Número máximo de operações que pode ser retornado. (Deve refletir 
-                                                   o tamanho da área de memória apontada por pvstOperations).
- 
-       Saídas     :              piNumOperations	Número de operações disponíveis no Pay&Go WEB.
-                                 vstOperations	   Lista das operações disponíveis e suas características.
-
- 
-       Retorno    :  PWRET_OK	         Operação realizada com êxito.
-                     PWRET_DLLNOTINIT	Não foi executado PW_iInit.
-                     PWRET_NOTINST	   É necessário efetuar uma transação de Instalação.
-                     Outro	            Outro erro de execução (ver “10. Códigos de retorno”, página 40). Uma mensagem 
-                                       de erro pode ser obtida através da função PW_iGetResult (PWINFO_RESULTMSG).
-      \*=========================================================================================================*/
-      [DllImport(PGWEBLIBADDRESS, EntryPoint = "PW_iGetOperations", CallingConvention = CallingConvention.StdCall)]
-      private static extern short PW_iGetOperations_(byte bOperType, ref PW_Operations[] vstOperations, ref short piNumOperations);
-
-      /*=========================================================================================================*\
-       Funcao     :  PW_iPPEventLoop
-
-       Descricao  :  Esta função deverá ser chamada em “loop” até que seja retornado PWRET_OK (ou um erro fatal). Nesse 
-                     “loop”, caso o retorno seja PWRET_DISPLAY o ponto de captura deverá atualizar o “display” com as 
-                     mensagens recebidas da biblioteca.
- 
-       Entradas   :  ulDisplaySize	Tamanho (em bytes) da área de memória apontada por pszDisplay. 
-                                    Tamanho mínimo recomendado: 100 bytes.
-
-       Saidas     :  pszDisplay	   Caso o retorno da função seja PWRET_DISPLAY, contém uma mensagem de texto 
-                                    (string ASCII com terminal nulo) a ser apresentada pela Automação na interface com 
-                                    o usuário principal. Para o formato desta mensagem, consultar “4.3.Interface com o 
-                                    usuário”, página 8.
- 
-       Retorno    :  PWRET_NOTHING	   Nada a fazer, continuar aguardando o processamento do PIN-pad.
-                     PWRET_DISPLAY	   Apresentar a mensagem recebida em pszDisplay e continuar aguardando o processamento do PIN-pad.
-                     PWRET_OK	         Captura de dados realizada com êxito, prosseguir com a transação.
-                     PWRET_CANCEL	   A operação foi cancelada pelo Cliente no PIN-pad (tecla [CANCEL]).
-                     PWRET_TIMEOUT	   O Cliente não realizou a captura no tempo limite.
-                     PWRET_FALLBACK	   Ocorreu um erro na leitura do cartão, passar a aceitar a digitação do número do cartão, caso já não esteja aceitando.
-                     PWRET_PPCOMERR	   Falha na comunicação com o PIN-pad.
-                     PWRET_DLLNOTINIT	Não foi executado PW_iInit.
-                     PWRET_INVCALL	   Não há captura de dados no PIN-pad em curso.
-                     Outro	            Outro erro de execução (ver “10. Códigos de retorno”, página 40). Uma mensagem 
-                                       de erro pode ser obtida através da função PW_iGetResult (PWINFO_RESULTMSG).
-      \*=========================================================================================================*/
-      [DllImport(PGWEBLIBADDRESS, EntryPoint = "PW_iPPEventLoop", CallingConvention = CallingConvention.StdCall)]
-      private static extern short PW_iPPEventLoop_([Out] StringBuilder pszDisplay, uint ulDisplaySize);
-
-      /*=========================================================================================================*\
-       Funcao     :  PW_iPPAbort
-
-       Descricao  :  Esta função pode ser utilizada pela Automação para interromper uma captura de dados no PIN-pad 
-                     em curso, e retorna imediatamente.
- 
-       Entradas   :  não há.
-
-       Saidas     :  não há. 
- 
-       Retorno    :  PWRET_OK	         Operação interrompida com sucesso.
-                     PWRET_PPCOMERR	   Falha na comunicação com o PIN-pad.
-                     PWRET_DLLNOTINIT	Não foi executado PW_iInit.
-                     Outro	            Outro erro de execução (ver “10. Códigos de retorno”, página 40). Uma mensagem 
-                                       de erro pode ser obtida através da função PW_iGetResult (PWINFO_RESULTMSG).
-      \*=========================================================================================================*/
-      [DllImport(PGWEBLIBADDRESS, EntryPoint = "PW_iPPAbort", CallingConvention = CallingConvention.StdCall)]
-      private static extern short PW_iPPAbort_();
-
-      /*=========================================================================================================*\
-       Funcao     :  PW_iPPGetCard
-
-       Descricao  :  Esta função é utilizada para realizar a leitura de um cartão (magnético, com chip com contato, 
-                     ou sem contato) no PIN-pad.
- 
-       Entradas   :  uiIndex	Índice (iniciado em 0) do dado solicitado na última execução de PW_iExecTransac 
-                              (índice do dado no vetor pvstParam).
-
-       Saidas     :  não há.
- 
-       Retorno    :  PWRET_OK	         Captura iniciada com sucesso, chamar PW_iPPEventLoop para obter o resultado.
-                     PWRET_INVPARAM	   O valor de uiIndex informado não corresponde a uma captura de dados deste tipo.
-                     PWRET_DLLNOTINIT	Não foi executado PW_iInit.
-                     Outro	            Outro erro de execução (ver “10. Códigos de retorno”, página 40). Uma mensagem 
-                                       de erro pode ser obtida através da função PW_iGetResult (PWINFO_RESULTMSG).
-      \*=========================================================================================================*/
-      [DllImport(PGWEBLIBADDRESS, EntryPoint = "PW_iPPGetCard", CallingConvention = CallingConvention.StdCall)]
-      private static extern short PW_iPPGetCard_(ushort uiIndex);
-
-      /*=========================================================================================================*\
-       Funcao     :  PW_iPPGetPIN
-
-       Descricao  :  Esta função é utilizada para realizar a captura no PIN-pad da senha (ou outro dado criptografado) 
-                     do Cliente.
- 
-       Entradas   :  uiIndex	Índice (iniciado em 0) do dado solicitado na última execução de PW_iExecTransac 
-                              (índice do dado no vetor pvstParam).
-   
-       Saidas     :  não há.
- 
-       Retorno    :  PWRET_OK	         Captura iniciada com sucesso, chamar PW_iPPEventLoop para obter o resultado.
-                     PWRET_INVPARAM	   O valor de uiIndex informado não corresponde a uma captura de dados deste tipo.
-                     PWRET_DLLNOTINIT	Não foi executado PW_iInit.
-                     Outro	            Outro erro de execução (ver “10. Códigos de retorno”, página 40). Uma mensagem 
-                                       de erro pode ser obtida através da função PW_iGetResult (PWINFO_RESULTMSG).
-      \*=========================================================================================================*/
-      [DllImport(PGWEBLIBADDRESS, EntryPoint = "PW_iPPGetPIN", CallingConvention = CallingConvention.StdCall)]
-      private static extern short PW_iPPGetPIN_(ushort uiIndex);
-
-      /*=========================================================================================================*\
-       Funcao     :  PW_iPPGetData
-
-       Descricao  :  Esta função é utilizada para fazer a captura no PIN-pad de um dado não sensível do Cliente..
- 
-       Entradas   :  uiIndex	Índice (iniciado em 0) do dado solicitado na última execução de PW_iExecTransac 
-                              (índice do dado no vetor pvstParam).
-
-       Saidas     :  nao ha.
- 
-       Retorno    :  PWRET_OK	         Captura iniciada com sucesso, chamar PW_iPPEventLoop para obter o resultado.
-                     PWRET_INVPARAM	   O valor de uiIndex informado não corresponde a uma captura de dados deste tipo.
-                     PWRET_DLLNOTINIT	Não foi executado PW_iInit.
-                     Outro	            Outro erro de execução (ver “10. Códigos de retorno”, página 40). Uma mensagem 
-                                       de erro pode ser obtida através da função PW_iGetResult (PWINFO_RESULTMSG).
-      \*=========================================================================================================*/
-      [DllImport(PGWEBLIBADDRESS, EntryPoint = "PW_iPPGetData", CallingConvention = CallingConvention.StdCall)]
-      private static extern short PW_iPPGetData_(ushort uiIndex);
-
-      /*=========================================================================================================*\
-       Funcao     :  PW_iPPGoOnChip
-
-       Descricao  :  Esta função é utilizada para realizar o processamento off-line (antes da comunicação com o Provedor) 
-                     de um cartão com chip no PIN-pad. 
- 
-       Entradas   :  uiIndex	Índice (iniciado em 0) do dado solicitado na última execução de PW_iExecTransac 
-                              (índice do dado no vetor pvstParam).
-
-       Saidas     :  não há.
- 
-       Retorno    :  PWRET_OK	         Captura iniciada com sucesso, chamar PW_iPPEventLoop para obter o resultado.
-                     PWRET_INVPARAM	   O valor de uiIndex informado não corresponde a uma captura de dados deste tipo.
-                     PWRET_DLLNOTINIT	Não foi executado PW_iInit.
-                     Outro	            Outro erro de execução (ver “10. Códigos de retorno”, página 40). Uma mensagem 
-                                       de erro pode ser obtida através da função PW_iGetResult (PWINFO_RESULTMSG).
-      \*=========================================================================================================*/
-      [DllImport(PGWEBLIBADDRESS, EntryPoint = "PW_iPPGoOnChip", CallingConvention = CallingConvention.StdCall)]
-      private static extern short PW_iPPGoOnChip_(ushort uiIndex);
-
-      /*=========================================================================================================*\
-       Funcao     :  PW_iPPFinishChip
-
-       Descricao  :  Esta função é utilizada para finalizar o processamento on-line (após comunicação com o Provedor) 
-                     de um cartão com chip no PIN-pad.
- 
-       Entradas   :  uiIndex	Índice (iniciado em 0) do dado solicitado na última execução de PW_iExecTransac 
-                              (índice do dado no vetor pvstParam).
-
-       Saidas     :  não há.
- 
-       Retorno    :  PWRET_OK	         Captura iniciada com sucesso, chamar PW_iPPEventLoop para obter o resultado.
-                     PWRET_INVPARAM	   O valor de uiIndex informado não corresponde a uma captura de dados deste tipo.
-                     PWRET_DLLNOTINIT	Não foi executado PW_iInit.
-                     Outro	            Outro erro de execução (ver “10. Códigos de retorno”, página 40). Uma mensagem 
-                                       de erro pode ser obtida através da função PW_iGetResult (PWINFO_RESULTMSG).
-      \*=========================================================================================================*/
-      [DllImport(PGWEBLIBADDRESS, EntryPoint = "PW_iPPFinishChip", CallingConvention = CallingConvention.StdCall)]
-      private static extern short PW_iPPFinishChip_(ushort uiIndex);
-
-      /*=========================================================================================================*\
-       Funcao     :  PW_iPPConfirmData
-
-       Descricao  :  Esta função é utilizada para obter do Cliente a confirmação de uma informação no PIN-pad.
- 
-       Entradas   :  uiIndex	Índice (iniciado em 0) do dado solicitado na última execução de PW_iExecTransac 
-                              (índice do dado no vetor pvstParam).
-
-       Saidas     :  não há.
- 
-       Retorno    :  PWRET_OK	         Captura iniciada com sucesso, chamar PW_iPPEventLoop para obter o resultado.
-                     PWRET_INVPARAM	   O valor de uiIndex informado não corresponde a uma captura de dados deste tipo.
-                     PWRET_DLLNOTINIT	Não foi executado PW_iInit.
-                     Outro	            Outro erro de execução (ver “10. Códigos de retorno”, página 40). Uma mensagem 
-                                       de erro pode ser obtida através da função PW_iGetResult (PWINFO_RESULTMSG).
-      \*=========================================================================================================*/
-      [DllImport(PGWEBLIBADDRESS, EntryPoint = "PW_iPPConfirmData", CallingConvention = CallingConvention.StdCall)]
-      private static extern short PW_iPPConfirmData_(ushort uiIndex);
-
-      /*=========================================================================================================*\
-       Funcao     :  PW_iPPRemoveCard
-
-       Descricao  :  Esta função é utilizada para fazer uma remoção de cartão do PIN-pad.
- 
-       Entradas   :  não há.
-
-       Saidas     :  não há.
- 
-       Retorno    :  PWRET_OK	         Captura iniciada com sucesso, chamar PW_iPPEventLoop para obter o resultado.
-                     PWRET_INVPARAM	   O valor de uiIndex informado não corresponde a uma captura de dados deste tipo.
-                     PWRET_DLLNOTINIT	Não foi executado PW_iInit.
-                     Outro	            Outro erro de execução (ver “10. Códigos de retorno”, página 40). Uma mensagem 
-                                       de erro pode ser obtida através da função PW_iGetResult (PWINFO_RESULTMSG).
-      \*=========================================================================================================*/
-      [DllImport(PGWEBLIBADDRESS, EntryPoint = "PW_iPPRemoveCard", CallingConvention = CallingConvention.StdCall)]
-      private static extern short PW_iPPRemoveCard_();
-
-      /*=========================================================================================================*\
-       Funcao     :  PW_iPPDisplay
-
-       Descricao  :  Esta função é utilizada para apresentar uma mensagem no PIN-pad
- 
-       Entradas   :  pszMsg   Mensagem a ser apresentada no PIN-pad. O caractere ‘\r’ (0Dh) indica uma quebra de linha.
-
-       Saidas     :  não há.
- 
-       Retorno    :  PWRET_OK	         Captura iniciada com sucesso, chamar PW_iPPEventLoop para obter o resultado.
-                     PWRET_DLLNOTINIT	Não foi executado PW_iInit.
-                     Outro	            Outro erro de execução (ver “10. Códigos de retorno”, página 40). Uma mensagem 
-                                       de erro pode ser obtida através da função PW_iGetResult (PWINFO_RESULTMSG).
-      \*=========================================================================================================*/
-      [DllImport(PGWEBLIBADDRESS, EntryPoint = "PW_iPPDisplay", CallingConvention = CallingConvention.StdCall)]
-      private static extern short PW_iPPDisplay_(string pszMsg);
-
-      /*=========================================================================================================*\
-       Funcao     :  PW_iPPWaitEvent
-
-       Descricao  :  Esta função é utilizada para aguardar a ocorrência de um evento no PIN-pad.
- 
-       Entradas   :  não há.
-
-       Saidas     :  pulEvent	         Evento ocorrido.
- 
-       Retorno    :  PWRET_OK	         Captura iniciada com sucesso, chamar PW_iPPEventLoop para obter o resultado.
-                     PWRET_DLLNOTINIT	Não foi executado PW_iInit.
-                     Outro	            Outro erro de execução (ver “10. Códigos de retorno”, página 40). Uma mensagem 
-                                       de erro pode ser obtida através da função PW_iGetResult (PWINFO_RESULTMSG).
-      \*=========================================================================================================*/
-      [DllImport(PGWEBLIBADDRESS, EntryPoint = "PW_iPPWaitEvent", CallingConvention = CallingConvention.StdCall)]
-      private static extern short PW_iPPWaitEvent_(ref uint pulEvent);
-
-      /*===========================================================================*\
-       Funcao   : PW_iPPGenericCMD
-
-       Descricao  :  Realiza comando genérico de PIN-pad.
- 
-       Entradas   :  uiIndex	Índice (iniciado em 0) do dado solicitado na última execução de PW_iExecTransac 
-                              (índice do dado no vetor pvstParam).
-
-       Saidas     :  Não há.
- 
-       Retorno    :  PWRET_xxx.
-      \*===========================================================================*/
-      [DllImport(PGWEBLIBADDRESS, EntryPoint = "PW_iPPGenericCMD", CallingConvention = CallingConvention.StdCall)]
-      private static extern short PW_iPPGenericCMD_(ushort uiIndex);
-
-      /*===========================================================================*\
-       Funcao     : PW_iPPPositiveConfirmation
-
-       Descricao  :  Realiza a confirmação positiva de um dado, ou um bloco de dados,
-                      no PIN-pad
- 
-       Entradas   :  uiIndex	Índice (iniciado em 0) do dado solicitado na última execução de PW_iExecTransac 
-                              (índice do dado no vetor pvstParam).
-
-       Saidas     :  Não há.
- 
-       Retorno    :  PWRET_xxx.
-      \*===========================================================================*/
-      [DllImport(PGWEBLIBADDRESS, EntryPoint = "PW_iPPPositiveConfirmation", CallingConvention = CallingConvention.StdCall)]
-      private static extern short PW_iPPPositiveConfirmation_(ushort uiIndex);
-
-      /*===========================================================================*\
-       Funcao     : PW_iTransactionInquiry
-
-       Descricao  :  Esta função é utilizada para realizar uma consulta de transações 
-                     efetuadas por um ponto de captura junto ao Pay&Go WEB.
-
-       Entradas   :  pszXmlRequest	Arquivo de entrada no formato XML, contendo as informações 
-                                    necessárias para fazer a consulta pretendida.
-                     ulXmlResponseLen Tamanho da string pszXmlResponse.
-
-       Saidas     :  pszXmlResponse	Arquivo de saída no formato XML, contendo o resultado da consulta 
-                                    efetuada, o arquivo de saída tem todos os elementos do arquivo de entrada.
-
-       Retorno    :  PWRET_xxx.
-      \*===========================================================================*/
-      [DllImport(PGWEBLIBADDRESS, EntryPoint = "PW_iTransactionInquiry", CallingConvention = CallingConvention.StdCall)]
-      private static extern short PW_iTransactionInquiry_(byte pszXmlRequest, byte pszXmlResponse, uint ulXmlResponseLen);
-
-      /*=========================================================================================================*\
-       Funcao     :  PW_iGetUserData
-
-       Descricao  :  Esta função é utilizada para obter um dado digitado pelo portador do cartão no PIN-pad.
-
-       Entradas   :  uiMessageId : Identificador da mensagem a ser exibida como prompt para a captura.
-                     bMinLen     : Tamanho mínimo do dado a ser digitado.
-                     bMaxLen     : Tamanho máximo do dado a ser digitado.
-                     iToutSec    : Tempo limite para a digitação do dado em segundos.
- 
-       Saídas     :  pszData     : Dado digitado pelo portador do cartão no PIN-pad.
- 
-       Retorno    :  PWRET_OK	         Operação realizada com êxito.
-                     PWRET_DLLNOTINIT	Não foi executado PW_iInit.
-                     PWRET_NOTINST	   É necessário efetuar uma transação de Instalação.
-                     PWRET_CANCEL	   A operação foi cancelada pelo Cliente no PIN-pad (tecla [CANCEL]).
-                     PWRET_TIMEOUT	   O Cliente não realizou a captura no tempo limite.
-                     PWRET_PPCOMERR	   Falha na comunicação com o PIN-pad.
-                     PWRET_INVCALL	   Não é possível capturar dados em um PIN-pad não ABECS.
-                     Outro	            Outro erro de execução (ver “10. Códigos de retorno”, página 40). Uma mensagem 
-                                       de erro pode ser obtida através da função PW_iGetResult (PWINFO_RESULTMSG).
-      \*=========================================================================================================*/
-      [DllImport(PGWEBLIBADDRESS, EntryPoint = "PW_iPPGetUserData", CallingConvention = CallingConvention.StdCall)]
-      private static extern short PW_iPPGetUserData_(short uiMessageId, short bMinLen, short bMaxLen, short iToutSec, StringBuilder pszData);
-
-      /*=========================================================================================================*\
-       Funcao     :  PW_iPPGetPINBlock
-
-       Descricao  :  Esta função é utilizada para obter o PIN block gerado a partir de um dado digitado pelo usuário no PIN-pad.
-
-       Entradas   :  bKeyID	      : Índice da Master Key (para chave PayGo, utilizar o índice “12”).
-                     pszWorkingKey	: Sequência 32 caracteres utilizados para a geração do PIN block (dois valores iguais digitados pelo usuário com duas pszWorkingKey diferentes irão gerar dois PIN block diferentes.
-                     bMinLen	      : Tamanho mínimo do dado a ser digitado (a partir de 4).
-                     bMaxLen     	: Tamanho máximo do dado a ser digitado.
-                     iToutSec    	: Tempo limite para a digitação do dado em segundos.
-                     pszPrompt	   : Mensagem de 32 caracteres (2 linhas com 16 colunas) para apresentação no momento do pedido do dado do usuário.
-
-
-       Saídas     :  pszData        : PIN block gerado com base nos dados fornecidos na função combinados com o dado digitado pelo usuário no PIN-pad.
-
-       Retorno    :  PWRET_OK	         Operação realizada com êxito.
-                     PWRET_DLLNOTINIT	Não foi executado PW_iInit.
-                     PWRET_NOTINST	   É necessário efetuar uma transação de Instalação.
-                     PWRET_CANCEL	   A operação foi cancelada pelo Cliente no PIN-pad (tecla [CANCEL]).
-                     PWRET_TIMEOUT	   O Cliente não realizou a captura no tempo limite.
-                     PWRET_PPCOMERR	   Falha na comunicação com o PIN-pad.
-                     Outro	            Outro erro de execução (ver “10. Códigos de retorno”, página 40).
-      \*=========================================================================================================*/
-      [DllImport(PGWEBLIBADDRESS, EntryPoint = "PW_iPPGetPINBlock", CallingConvention = CallingConvention.StdCall)]
-      private static extern short PW_iPPGetPINBlock_(short bKeyID, string pszWorkingKey, short bMinLen,
-         short bMaxLen, short iToutSec, string pszPrompt, StringBuilder pszData);
-
-      /*=========================================================================================================*\
-       Funcao     :  PW_iWaitConfirmation
-
-       Descricao  :  Esta função é utilizada sincronizar a aplicação com a thread da confirmação.
-                     Esta função apenas retorna quando o processo de confirmação é finalizado.
-
-       Entradas   :  Não há.
-
-       Saídas     :  Não há.
-
-       Retorno    :  PWRET_OK	         Operação realizada com êxito.
-                     PWRET_DLLNOTINIT	Não foi executado PW_iInit.
-                     PWRET_NOTINST	   É necessário efetuar uma transação de Instalação.
-                     Outro	            Outro erro de execução (ver “10. Códigos de retorno”, página 40).
-      \*=========================================================================================================*/
-      [DllImport(PGWEBLIBADDRESS, EntryPoint = "PW_iWaitConfirmation", CallingConvention = CallingConvention.StdCall)]
-      private static extern short PW_iWaitConfirmation_();
-
-      /*=========================================================================================================*\
-       Funcao     :  PW_iPPTestKey
-
-       Descricao  :  Esta função é utilizada para iniciar a captura de uma chave de PIN do teste de chaves.
-                     Deve ser chamada em resposta a uma captura de dados do tipo PWDAT_TSTKEY.
-
-
-       Entradas   :  uiIndex.
-
-       Saídas     :  Não há.
-
-       Retorno    :  PWRET_OK	         Operação realizada com êxito.
-                     PWRET_DLLNOTINIT	Não foi executado PW_iInit.
-                     PWRET_NOTINST	   É necessário efetuar uma transação de Instalação.
-                     Outro	            Outro erro de execução (ver “10. Códigos de retorno”, página 40).
-      \*=========================================================================================================*/
-      [DllImport(PGWEBLIBADDRESS, EntryPoint = "PW_iPPTestKey", CallingConvention = CallingConvention.StdCall)]
-      private static extern short PW_iPPTestKey_(ushort uiIndex);
+      #region External API Win Methods
+      [DllImport("kernel32.dll", SetLastError = true)]
+      private static extern IntPtr LoadLibrary(string libname);
+
+      [DllImport("kernel32.dll")]
+      private static extern IntPtr GetProcAddress(IntPtr hModule, string lpProcName);
+      #endregion
 
       #endregion Interop
 
@@ -733,11 +718,71 @@ namespace Muxx.Lib.Services
             return pwdat.ToString();
          return dat.ToString();
       }
+      /// <summary>
+      /// Função para encerrar funcionalidades da Lib e remover proteção da automação para atualizações
+      /// </summary>
+      public static void PW_End()
+      {
+         try
+         {
+            if (DebugType == DebugType.Json)
+            {
+               CallDebugCallback("PW_End()");
+            }
+            else
+            {
+               CallDebugCallback("PW_End");
+            }
+         }
+         catch (Exception)
+         {
+         }
+
+         try
+         {
+            if (DebugType == DebugType.Default)
+            {
+               CallDebugCallback("PW_End");
+            }
+
+            Stopwatch stopwatch =
+               CallBeginCallPGWebLibCallback("PW_End");
+
+            IntPtr libMethod = GetProcAddress(pgWebLib_Loded, "PW_End");
+            dynamic PW_End_ = Marshal.GetDelegateForFunctionPointer(libMethod, typeof(PW_End_));
+            PW_End_();
+
+            long elapsedMilliseconds =
+               CallEndCallPGWebLibCallback(
+                  stopwatch, "PW_End");
+
+            if (DebugType == DebugType.Json)
+            {
+               CallDebugCallback(
+                  "PW_End()",
+                  new
+                  {
+                     ElapsedMilliseconds = elapsedMilliseconds
+                  }
+               );
+            }
+            else
+            {
+               CallDebugCallback(
+                  string.Format("\t{0} = {1}", "Elapsed Milliseconds", elapsedMilliseconds)
+                  );
+            }
+         }
+         catch (BadImageFormatException ex)
+         {
+            throw ex;
+         }
+      }
 
       ///<inheritdoc cref="PW_iInit(string)"/>
       public static short PW_iInit()
       {
-         string pszWorkingDir = Path.GetDirectoryName(PGWEBLIBADDRESS);
+         string pszWorkingDir = Path.GetDirectoryName(pgwebLibAddress);
          return PW_iInit(pszWorkingDir);
       }
 
@@ -748,28 +793,6 @@ namespace Muxx.Lib.Services
       /// <returns></returns>
       public static short PW_iInit(string pszWorkingDir)
       {
-         string resourceName;
-         string pgwebLibAddress;
-#if NETCOREAPP
-         if (Helpers.OperatingSystem.IsWindows())
-         {
-#endif
-         resourceName = Environment.Is64BitProcess ? "PGWebLib64.dll" : "PGWebLib32.dll";
-         pgwebLibAddress = string.Format("{0}.dll", PGWEBLIBADDRESS);
-#if NETCOREAPP
-         }
-         else if (Helpers.OperatingSystem.IsLinux() && Environment.Is64BitProcess)
-         {
-            resourceName = "PGWebLib64.so";
-            pgwebLibAddress = string.Format("{0}.so", PGWEBLIBADDRESS);
-         }
-         else
-         {
-            throw new PlatformNotSupportedException();
-         }
-#endif
-         SaveResourceToFile(resourceName, pgwebLibAddress);
-
          try
          {
             FileVersionInfo fileVersionInfo = FileVersionInfo.GetVersionInfo(pgwebLibAddress);
@@ -813,6 +836,8 @@ namespace Muxx.Lib.Services
                   "PW_iInit"
                );
 
+            IntPtr libMethod = GetProcAddress(pgWebLib_Loded, "PW_iInit");
+            dynamic PW_iInit_ = Marshal.GetDelegateForFunctionPointer(libMethod, typeof(PW_iInit_));
             short ret = PW_iInit_(pszWorkingDir);
 
             long elapsedMilliseconds =
@@ -880,6 +905,9 @@ namespace Muxx.Lib.Services
                "PW_iNewTransac"
                );
 
+         //short ret = PW_iNewTransac_(bOper);
+         IntPtr libMethod = GetProcAddress(pgWebLib_Loded, "PW_iNewTransac");
+         dynamic PW_iNewTransac_ = Marshal.GetDelegateForFunctionPointer(libMethod, typeof(PW_iNewTransac_));
          short ret = PW_iNewTransac_(bOper);
 
          long elapsedMilliseconds =
@@ -946,6 +974,9 @@ namespace Muxx.Lib.Services
                "PW_iAddParam"
                );
 
+         //short ret = PW_iAddParam_(wParam, pszValue);
+         IntPtr libMethod = GetProcAddress(pgWebLib_Loded, "PW_iAddParam");
+         dynamic PW_iAddParam_ = Marshal.GetDelegateForFunctionPointer(libMethod, typeof(PW_iAddParam_));
          short ret = PW_iAddParam_(wParam, pszValue);
 
          long elapsedMilliseconds =
@@ -998,6 +1029,9 @@ namespace Muxx.Lib.Services
                "PW_iExecTransac"
                );
 
+         //short ret = PW_iExecTransac_(vstParam, ref piNumParam);
+         IntPtr libMethod = GetProcAddress(pgWebLib_Loded, "PW_iExecTransac");
+         dynamic PW_iExecTransac_ = Marshal.GetDelegateForFunctionPointer(libMethod, typeof(PW_iExecTransac_));
          short ret = PW_iExecTransac_(vstParam, ref piNumParam);
 
          long elapsedMilliseconds =
@@ -1092,6 +1126,8 @@ namespace Muxx.Lib.Services
                "PW_iGetResult"
                );
 
+         IntPtr libMethod = GetProcAddress(pgWebLib_Loded, "PW_iGetResult");
+         dynamic PW_iGetResult_ = Marshal.GetDelegateForFunctionPointer(libMethod, typeof(PW_iGetResult_));
          short ret = PW_iGetResult_(iInfo, pszData, ulDataSize);
 
          long elapsedMilliseconds =
@@ -1195,6 +1231,8 @@ namespace Muxx.Lib.Services
                "PW_iConfirmation"
                );
 
+         IntPtr libMethod = GetProcAddress(pgWebLib_Loded, "PW_iConfirmation");
+         dynamic PW_iConfirmation_ = Marshal.GetDelegateForFunctionPointer(libMethod, typeof(PW_iConfirmation_));
          short ret = PW_iConfirmation_(ulResult, pszReqNum, pszLocRef, pszExtRef, pszVirtMerch, pszAuthSyst);
 
          long elapsedMilliseconds =
@@ -1249,6 +1287,8 @@ namespace Muxx.Lib.Services
                "PW_iIdleProc"
                );
 
+         IntPtr libMethod = GetProcAddress(pgWebLib_Loded, "PW_iIdleProc");
+         dynamic PW_iIdleProc_ = Marshal.GetDelegateForFunctionPointer(libMethod, typeof(PW_iIdleProc_));
          short ret = PW_iIdleProc_();
 
          long elapsedMilliseconds =
@@ -1301,6 +1341,8 @@ namespace Muxx.Lib.Services
                "PW_iGetOperations"
                );
 
+         IntPtr libMethod = GetProcAddress(pgWebLib_Loded, "PW_iGetOperations");
+         dynamic PW_iGetOperations_ = Marshal.GetDelegateForFunctionPointer(libMethod, typeof(PW_iGetOperations_));
          short ret = PW_iGetOperations_(bOperType, ref vstOperations, ref piNumOperations);
 
          long elapsedMilliseconds =
@@ -1349,6 +1391,8 @@ namespace Muxx.Lib.Services
                "PW_iPPEventLoop"
                );
 
+         IntPtr libMethod = GetProcAddress(pgWebLib_Loded, "PW_iPPEventLoop");
+         dynamic PW_iPPEventLoop_ = Marshal.GetDelegateForFunctionPointer(libMethod, typeof(PW_iPPEventLoop_));
          short ret = PW_iPPEventLoop_(pszDisplay, ulDisplaySize);
 
          long elapsedMilliseconds =
@@ -1433,6 +1477,8 @@ namespace Muxx.Lib.Services
                "PW_iPPAbort"
                );
 
+         IntPtr libMethod = GetProcAddress(pgWebLib_Loded, "PW_iPPAbort");
+         dynamic PW_iPPAbort_ = Marshal.GetDelegateForFunctionPointer(libMethod, typeof(PW_iPPAbort_));
          short ret = PW_iPPAbort_();
 
          long elapsedMilliseconds =
@@ -1483,6 +1529,8 @@ namespace Muxx.Lib.Services
                "PW_iPPGetCard"
                );
 
+         IntPtr libMethod = GetProcAddress(pgWebLib_Loded, "PW_iPPGetCard");
+         dynamic PW_iPPGetCard_ = Marshal.GetDelegateForFunctionPointer(libMethod, typeof(PW_iPPGetCard_));
          short ret = PW_iPPGetCard_(uiIndex);
 
          long elapsedMilliseconds =
@@ -1534,6 +1582,8 @@ namespace Muxx.Lib.Services
                "PW_iPPGetPIN"
                );
 
+         IntPtr libMethod = GetProcAddress(pgWebLib_Loded, "PW_iPPGetPIN");
+         dynamic PW_iPPGetPIN_ = Marshal.GetDelegateForFunctionPointer(libMethod, typeof(PW_iPPGetPIN_));
          short ret = PW_iPPGetPIN_(uiIndex);
 
          long elapsedMilliseconds =
@@ -1585,6 +1635,8 @@ namespace Muxx.Lib.Services
                "PW_iPPGetData"
                );
 
+         IntPtr libMethod = GetProcAddress(pgWebLib_Loded, "PW_iPPGetData");
+         dynamic PW_iPPGetData_ = Marshal.GetDelegateForFunctionPointer(libMethod, typeof(PW_iPPGetData_));
          short ret = PW_iPPGetData_(uiIndex);
 
          long elapsedMilliseconds =
@@ -1636,6 +1688,8 @@ namespace Muxx.Lib.Services
                "PW_iPPGoOnChip"
                );
 
+         IntPtr libMethod = GetProcAddress(pgWebLib_Loded, "PW_iPPGoOnChip");
+         dynamic PW_iPPGoOnChip_ = Marshal.GetDelegateForFunctionPointer(libMethod, typeof(PW_iPPGoOnChip_));
          short ret = PW_iPPGoOnChip_(uiIndex);
 
          long elapsedMilliseconds =
@@ -1687,6 +1741,8 @@ namespace Muxx.Lib.Services
                "PW_iPPFinishChip"
                );
 
+         IntPtr libMethod = GetProcAddress(pgWebLib_Loded, "PW_iPPFinishChip");
+         dynamic PW_iPPFinishChip_ = Marshal.GetDelegateForFunctionPointer(libMethod, typeof(PW_iPPFinishChip_));
          short ret = PW_iPPFinishChip_(uiIndex);
 
          long elapsedMilliseconds =
@@ -1738,6 +1794,8 @@ namespace Muxx.Lib.Services
                "PW_iPPConfirmData"
                );
 
+         IntPtr libMethod = GetProcAddress(pgWebLib_Loded, "PW_iPPConfirmData");
+         dynamic PW_iPPConfirmData_ = Marshal.GetDelegateForFunctionPointer(libMethod, typeof(PW_iPPConfirmData_));
          short ret = PW_iPPConfirmData_(uiIndex);
 
          long elapsedMilliseconds =
@@ -1787,6 +1845,8 @@ namespace Muxx.Lib.Services
                "PW_iPPRemoveCard"
                );
 
+         IntPtr libMethod = GetProcAddress(pgWebLib_Loded, "PW_iPPRemoveCard");
+         dynamic PW_iPPRemoveCard_ = Marshal.GetDelegateForFunctionPointer(libMethod, typeof(PW_iPPRemoveCard_));
          short ret = PW_iPPRemoveCard_();
 
          long elapsedMilliseconds =
@@ -1837,6 +1897,8 @@ namespace Muxx.Lib.Services
                "PW_iPPDisplay"
                );
 
+         IntPtr libMethod = GetProcAddress(pgWebLib_Loded, "PW_iPPDisplay");
+         dynamic PW_iPPDisplay_ = Marshal.GetDelegateForFunctionPointer(libMethod, typeof(PW_iPPDisplay_));
          short ret = PW_iPPDisplay_(pszMsg);
 
          long elapsedMilliseconds =
@@ -1888,6 +1950,8 @@ namespace Muxx.Lib.Services
                "PW_iPPWaitEvent"
                );
 
+         IntPtr libMethod = GetProcAddress(pgWebLib_Loded, "PW_iPPWaitEvent");
+         dynamic PW_iPPWaitEvent_ = Marshal.GetDelegateForFunctionPointer(libMethod, typeof(PW_iPPWaitEvent_));
          short ret = PW_iPPWaitEvent_(ref pulEvent);
 
          long elapsedMilliseconds =
@@ -1940,6 +2004,8 @@ namespace Muxx.Lib.Services
                "PW_iPPGenericCMD"
                );
 
+         IntPtr libMethod = GetProcAddress(pgWebLib_Loded, "PW_iPPGenericCMD");
+         dynamic PW_iPPGenericCMD_ = Marshal.GetDelegateForFunctionPointer(libMethod, typeof(PW_iPPGenericCMD_));
          short ret = PW_iPPGenericCMD_(uiIndex);
 
          long elapsedMilliseconds =
@@ -1991,6 +2057,8 @@ namespace Muxx.Lib.Services
                "PW_iPPPositiveConfirmation"
                );
 
+         IntPtr libMethod = GetProcAddress(pgWebLib_Loded, "PW_iPPPositiveConfirmation");
+         dynamic PW_iPPPositiveConfirmation_ = Marshal.GetDelegateForFunctionPointer(libMethod, typeof(PW_iPPPositiveConfirmation_));
          short ret = PW_iPPPositiveConfirmation_(uiIndex);
 
          long elapsedMilliseconds =
@@ -2040,6 +2108,8 @@ namespace Muxx.Lib.Services
                "PW_iWaitConfirmation"
                );
 
+         IntPtr libMethod = GetProcAddress(pgWebLib_Loded, "PW_iPPPositiveConfirmation");
+         dynamic PW_iWaitConfirmation_ = Marshal.GetDelegateForFunctionPointer(libMethod, typeof(PW_iWaitConfirmation_));
          short ret = PW_iWaitConfirmation_();
 
          long elapsedMilliseconds =
@@ -2090,6 +2160,8 @@ namespace Muxx.Lib.Services
                "PW_iPPTestKey"
                );
 
+         IntPtr libMethod = GetProcAddress(pgWebLib_Loded, "PW_iPPTestKey");
+         dynamic PW_iPPTestKey_ = Marshal.GetDelegateForFunctionPointer(libMethod, typeof(PW_iPPTestKey_));
          short ret = PW_iPPTestKey_(uiIndex);
 
          long elapsedMilliseconds =
